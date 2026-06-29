@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3FA Security Gateway</title>
+<!-- Link to your new external stylesheet -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="logo">SEC-PRJ-7F_25</div>
+    <div class="logo-title">3FA Gateway</div>
+
+    <nav class="steps-nav">
+      <div class="step-item" id="nav-register">
+        <div class="step-badge">0</div>
+        <div>
+          <div class="step-label">Setup</div>
+          <div class="step-title">Registration</div>
+        </div>
+      </div>
+      <div class="step-item" id="nav-f1">
+        <div class="step-badge">1</div>
+        <div>
+          <div class="step-label">Knowledge</div>
+          <div class="step-title">Password</div>
+        </div>
+      </div>
+      <div class="step-item" id="nav-f2">
+        <div class="step-badge">2</div>
+        <div>
+          <div class="step-label">Possession</div>
+          <div class="step-title">TOTP Code</div>
+        </div>
+      </div>
+      <div class="step-item" id="nav-f3">
+        <div class="step-badge">3</div>
+        <div>
+          <div class="step-label">Trusted Device</div>
+          <div class="step-title">Cryptographic Proof</div>
+        </div>
+      </div>
+      <div class="step-item" id="nav-done">
+        <div class="step-badge">✓</div>
+        <div>
+          <div class="step-label">Access Granted</div>
+          <div class="step-title">JWT + Feed</div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      Stack: FastAPI · Argon2ID<br>
+      TOTP RFC 6238 · ECDSA P-256<br>
+      JWT HS256 · SQLite · Web Crypto
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <!-- ════ PANEL 0: Register / Device setup ════ -->
+    <div class="panel active" id="panel-register">
+      <div class="panel-eyebrow">Step 0 — Setup</div>
+      <div class="panel-title">Create Your Account</div>
+      <div class="panel-desc">Register once. Your browser will generate a cryptographic keypair for Factor 3 — the private key never leaves this device.</div>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('register')">New Account</button>
+        <button class="tab-btn" onclick="switchTab('login')">Already Registered</button>
+      </div>
+
+      <!-- Register form -->
+      <div id="tab-register">
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="reg-username" placeholder="choose a username" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="min. 8 characters" />
+        </div>
+
+        <button class="btn btn-primary" onclick="doRegister()">
+          <span>Create Account</span>
+        </button>
+        <div id="reg-status" class="status-msg"></div>
+
+        <!-- QR code shown after registration -->
+        <div id="qr-section" style="display:none; margin-top:2rem;">
+          <div class="divider"></div>
+          <div class="panel-eyebrow">Step 0B — Scan QR Code</div>
+          <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;">Open <strong style="color:var(--text)">Google Authenticator</strong> or <strong style="color:var(--text)">Apple Passwords</strong> and scan this code.</p>
+          <div class="qr-wrap">
+            <img id="qr-img" src="" alt="TOTP QR Code" />
+          </div>
+          <div class="callout">
+            <strong>Important:</strong> Scan now — this QR code is only shown once. After scanning, your app will generate a new 6-digit code every 30 seconds.
+          </div>
+          <button class="btn btn-primary" onclick="doRegisterDevice()">
+            Register This Device as Trusted →
+          </button>
+          <div id="device-status" class="status-msg"></div>
+        </div>
+      </div>
+
+      <!-- Login shortcut (already registered) -->
+      <div id="tab-login" style="display:none;">
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="login-jump-username" placeholder="your username" />
+        </div>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:1.2rem;">Enter your username to start the 3-factor login flow.</p>
+        <button class="btn btn-primary" onclick="jumpToLogin()">Start Login →</button>
+      </div>
+    </div>
+
+
+    <!-- ════ PANEL 1: Factor 1 — Password ════ -->
+    <div class="panel" id="panel-f1">
+      <div class="factor-pill">● Factor 1 of 3</div>
+      <div class="panel-eyebrow">Knowledge Factor</div>
+      <div class="panel-title">Enter Your Password</div>
+      <div class="panel-desc">Your password is never stored in plaintext. It was hashed with Argon2ID — a memory-hard algorithm designed to resist brute-force attacks.</div>
+
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="f1-username" placeholder="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="f1-password" placeholder="your password" />
+      </div>
+
+      <button class="btn btn-primary" onclick="doF1()">Verify Password →</button>
+      <div id="f1-status" class="status-msg"></div>
+
+      <div class="callout" style="margin-top:2rem;">
+        <strong>What's happening:</strong> The server computes Argon2ID(password + salt) and compares it to the stored hash. If it matches, a signed JWT with status <code>pending_f2</code> is issued — no session stored server-side.
+      </div>
+    </div>
+
+
+    <!-- ════ PANEL 2: Factor 2 — TOTP ════ -->
+    <div class="panel" id="panel-f2">
+      <div class="factor-pill" style="border-color:rgba(124,58,237,0.4);background:rgba(124,58,237,0.08);color:var(--accent2);">● Factor 2 of 3</div>
+      <div class="panel-eyebrow">Possession Factor</div>
+      <div class="panel-title">Enter Your TOTP Code</div>
+      <div class="panel-desc">Open Google Authenticator (or Apple Passwords) and enter the 6-digit code shown for <strong id="f2-username-label" style="color:var(--text)">your account</strong>.</div>
+
+      <div class="field">
+        <label>6-digit code</label>
+        <input type="number" id="f2-code" class="otp-input" placeholder="000000" maxlength="6" />
+      </div>
+
+      <button class="btn btn-primary" onclick="doF2()">Verify Code →</button>
+      <div id="f2-status" class="status-msg"></div>
+
+      <div class="callout" style="margin-top:2rem;">
+        <strong>What's happening:</strong> The server runs TOTP (RFC 6238) — HMAC-SHA1 over the current Unix time slot (30 s window). The code is valid for ±30 s to absorb clock skew. No code is ever reusable.
+      </div>
+    </div>
+
+
+    <!-- ════ PANEL 3: Factor 3 — Web Crypto ════ -->
+    <div class="panel" id="panel-f3">
+      <div class="factor-pill" style="border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:var(--success);">● Factor 3 of 3</div>
+      <div class="panel-eyebrow">Trusted Device Factor</div>
+      <div class="panel-title">Cryptographic Device Proof</div>
+      <div class="panel-desc">Your browser will silently sign a server challenge with your private key. If you're on the device you registered with, this happens automatically.</div>
+
+      <div class="crypto-visual" id="crypto-status-visual">
+        <div class="crypto-row">
+          <span class="crypto-icon">🔑</span>
+          <div>
+            <div class="crypto-label">Private Key Location</div>
+            <div class="crypto-value">Browser Secure Key Store (never transmitted)</div>
+          </div>
+        </div>
+        <div class="crypto-row">
+          <span class="crypto-icon">📡</span>
+          <div>
+            <div class="crypto-label">Challenge (from server)</div>
+            <div class="crypto-value" id="challenge-display">Requesting...</div>
+          </div>
+        </div>
+        <div class="crypto-row">
+          <span class="crypto-icon">✍️</span>
+          <div>
+            <div class="crypto-label">Signature (ECDSA P-256)</div>
+            <div class="crypto-value" id="sig-display">Pending...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REPLACED: Split into Request and Sign buttons -->
+      <button class="btn btn-primary" id="f3-request-btn" onclick="requestF3Challenge()">1. Request Challenge from Server →</button>
+      <button class="btn btn-primary" id="f3-sign-btn" style="display:none; margin-top:1rem;" onclick="signAndVerifyF3()">2. Sign Challenge & Verify →</button>
+      <div id="f3-status" class="status-msg"></div>
+
+      <!-- NEW: The Manual Proceed Button, hidden by default -->
+      <button class="btn btn-success" id="f3-proceed-btn" style="display:none; margin-top:1rem;" onclick="goToSuccess()">
+        Proceed to Authentication Complete →
+      </button>
+
+      <div class="callout" style="margin-top:2rem;">
+        <strong>What's happening:</strong> The server generates a random 32-byte challenge. Your browser signs SHA-256(challenge) with the ECDSA P-256 private key stored on this device at registration. The server verifies the signature against your stored public key. Private key: mathematically impossible to fake.
+      </div>
+    </div>
+
+
+    <!-- ════ PANEL DONE: Access Granted ════ -->
+    <div class="panel" id="panel-done">
+      <div class="success-icon">🛡️</div>
+      <div class="panel-eyebrow">Authentication Complete</div>
+      <div class="panel-title">All 3 Factors Verified</div>
+      <p style="color:var(--muted);margin-bottom:1.5rem;">You have proven: something you <strong style="color:var(--text)">know</strong>, something you <strong style="color:var(--text)">possess</strong>, and that you are on your <strong style="color:var(--text)">trusted device</strong>.</p>
+
+      <div class="callout success">
+        <strong>JWT Issued</strong> — This signed token is your access credential. It expires in 5 minutes and is only valid with the correct signature.
+      </div>
+
+      <div class="jwt-display" id="jwt-display">Loading token...</div>
+
+      <div class="divider"></div>
+
+      <div class="panel-eyebrow">Protected Resource</div>
+      <div style="font-size:1.1rem;font-weight:600;margin-bottom:1.2rem;">Your Social Feed</div>
+
+      <div id="feed-container">
+        <p style="color:var(--muted);">Loading feed...</p>
+      </div>
+
+      <div style="margin-top:2rem;">
+        <button class="btn btn-ghost" onclick="resetAll()">← Start Over</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Link to your new external JavaScript file -->
+<script src="app.js"></script>
+
+</body>
+</html>

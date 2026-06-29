@@ -1,0 +1,12 @@
+services:
+  gateway_api:
+    build: ./gateway_api
+    container_name: security_3fa_gateway_son
+    volumes:
+      - ./gateway_api:/app
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
